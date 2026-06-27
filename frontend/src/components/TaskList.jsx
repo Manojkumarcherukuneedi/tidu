@@ -1,34 +1,45 @@
-import TaskItem from "./TaskItem.jsx";
+import TaskSection from "./TaskSection.jsx";
 
 /**
- * Renders the list of tasks, or a friendly empty state. Purely presentational —
- * it just maps data to TaskItem and forwards the callbacks.
+ * Renders the grouped task board, or an intentional empty state. The grouping
+ * is computed by App (useMemo over taskUtils.groupTasks) and passed in as
+ * ready-to-render `sections`, keeping this component purely presentational.
  */
-export default function TaskList({ tasks, filter, onUpdate, onDelete }) {
-  if (tasks.length === 0) {
+export default function TaskList({ sections, filter, onUpdate, onDelete }) {
+  const hasTasks = sections.some((s) => s.tasks.length > 0);
+
+  if (!hasTasks) {
     return (
       <div className="empty">
+        <div className="empty-icon">🗒️</div>
         {filter ? (
-          <p>
-            No tasks in <strong>{filter}</strong>. Try a different filter.
-          </p>
+          <>
+            <p className="empty-title">No tasks in “{filter}”</p>
+            <p className="empty-sub">Try a different category filter.</p>
+          </>
         ) : (
-          <p>No tasks yet. Add one above to get started. ✨</p>
+          <>
+            <p className="empty-title">Your board is clear</p>
+            <p className="empty-sub">
+              Add a task above and the AI will sort out its category, priority,
+              and due date.
+            </p>
+          </>
         )}
       </div>
     );
   }
 
   return (
-    <ul className="task-list">
-      {tasks.map((task) => (
-        <TaskItem
-          key={task.id}
-          task={task}
+    <div className="board">
+      {sections.map((section) => (
+        <TaskSection
+          key={section.key}
+          section={section}
           onUpdate={onUpdate}
           onDelete={onDelete}
         />
       ))}
-    </ul>
+    </div>
   );
 }

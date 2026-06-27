@@ -1,65 +1,61 @@
 import { useState } from "react";
+import { isOverdue } from "../taskUtils.js";
 
 const PRIORITIES = ["High", "Medium", "Low"];
 
 /**
- * A single task row with two modes:
- *  - view mode: complete checkbox, title/raw_text, category + priority badges,
- *    due date, and Edit/Delete actions.
- *  - edit mode: inline inputs for title, category, and priority.
+ * A single task card with view + inline-edit modes.
  *
- * Local component state covers only the editing UI (whether we're editing and
- * the draft field values). The persisted task data is owned by App and flows in
- * as props — saving calls back up via onUpdate.
+ * Local state is only ephemeral UI: are we editing, the edit draft, a busy flag
+ * during a request, and a `removing` flag that drives the exit animation before
+ * the row actually unmounts. The persisted task is owned by App and arrives as
+ * a prop; saves/toggles/deletes call back up via onUpdate / onDelete.
  */
 export default function TaskItem({ task, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({
-    title: task.title ?? "",
-    category: task.category ?? "",
-    priority: task.priority ?? "Medium",
-  });
+  const [draft, setDraft] = useState(toDraft(task));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
+  const [removing, setRemoving] = useState(false);
 
-  async function run(action) {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const overdue = isOverdue(task);
 
   function toggleComplete() {
-    run(() => onUpdate(task.id, { completed: !task.completed }));
+    setBusy(true);
+    Promise.resolve(onUpdate(task.id, { completed: !task.completed })).finally(
+      () => setBusy(false)
+    );
   }
 
   function startEditing() {
-    setDraft({
-      title: task.title ?? "",
-      category: task.category ?? "",
-      priority: task.priority ?? "Medium",
-    });
-    setError(null);
+    setDraft(toDraft(task));
     setEditing(true);
   }
 
   async function saveEdit() {
-    await run(async () => {
+    setBusy(true);
+    try {
       await onUpdate(task.id, {
         title: draft.title.trim() || null,
         category: draft.category.trim() || null,
         priority: draft.priority,
       });
       setEditing(false);
-    });
+    } catch {
+      /* App toasts the error; stay in edit mode so nothing is lost */
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const priorityClass = `badge priority-${(task.priority || "Medium").toLowerCase()}`;
+  async function handleDelete() {
+    setRemoving(true); // play the exit animation first
+    await new Promise((r) => setTimeout(r, 220));
+    try {
+      await onDelete(task.id);
+    } catch {
+      setRemoving(false); // delete failed — bring the card back
+    }
+  }
 
   if (editing) {
     return (
@@ -71,6 +67,7 @@ export default function TaskItem({ task, onUpdate, onDelete }) {
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               placeholder={task.raw_text}
+              autoFocus
             />
           </label>
           <label>
@@ -98,52 +95,67 @@ export default function TaskItem({ task, onUpdate, onDelete }) {
           <button className="btn btn-primary" onClick={saveEdit} disabled={busy}>
             {busy ? "Saving…" : "Save"}
           </button>
-          <button
-            className="btn"
-            onClick={() => setEditing(false)}
-            disabled={busy}
-          >
+          <button className="btn" onClick={() => setEditing(false)} disabled={busy}>
             Cancel
           </button>
         </div>
-        {error && <p className="field-error">{error}</p>}
       </li>
     );
   }
 
+  const cls = [
+    "task-item",
+    task.completed ? "completed" : "",
+    overdue ? "overdue" : "",
+    removing ? "removing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <li className={`task-item ${task.completed ? "completed" : ""}`}>
-      <input
-        type="checkbox"
-        className="check"
-        checked={task.completed}
-        onChange={toggleComplete}
+    <li className={cls}>
+      <button
+        className={`check ${task.completed ? "checked" : ""}`}
+        onClick={toggleComplete}
         disabled={busy}
-        aria-label="Mark complete"
-      />
+        aria-pressed={task.completed}
+        aria-label={task.completed ? "Mark as not done" : "Mark complete"}
+      >
+        <span className="check-mark">✓</span>
+      </button>
 
       <div className="task-body">
         <span className="task-title">{task.title || task.raw_text}</span>
         <div className="task-meta">
           {task.category && <span className="badge category">{task.category}</span>}
-          <span className={priorityClass}>{task.priority || "Medium"}</span>
-          {task.due_date && <span className="due">📅 {task.due_date}</span>}
+          <span className={`badge priority-${(task.priority || "Medium").toLowerCase()}`}>
+            {task.priority || "Medium"}
+          </span>
+          {task.due_date && (
+            <span className={`due ${overdue ? "due-overdue" : ""}`}>
+              {overdue ? "⚠ Overdue · " : "📅 "}
+              {task.due_date}
+            </span>
+          )}
         </div>
-        {error && <p className="field-error">{error}</p>}
       </div>
 
       <div className="task-actions">
-        <button className="btn" onClick={startEditing} disabled={busy}>
+        <button className="btn btn-icon" onClick={startEditing} disabled={busy}>
           Edit
         </button>
-        <button
-          className="btn btn-danger"
-          onClick={() => run(() => onDelete(task.id))}
-          disabled={busy}
-        >
+        <button className="btn btn-icon btn-danger" onClick={handleDelete} disabled={busy}>
           Delete
         </button>
       </div>
     </li>
   );
+}
+
+function toDraft(task) {
+  return {
+    title: task.title ?? "",
+    category: task.category ?? "",
+    priority: task.priority ?? "Medium",
+  };
 }
