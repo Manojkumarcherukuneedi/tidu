@@ -126,7 +126,7 @@ export default function App() {
         <header className="app-header">
           <div className="title-row">
             <div>
-              <h1>AI Task Organizer</h1>
+              <h1>Tidu</h1>
               <p className="subtitle">
                 Type a task in plain language — the AI fills in the category,
                 priority, and due date.

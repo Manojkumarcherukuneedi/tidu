@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="AI Task Organizer", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Tidu", version="0.3.0", lifespan=lifespan)
 
 # Allow the React dev server (slice 4) to call the API during development.
 # Both localhost and 127.0.0.1 are listed because the browser treats them as

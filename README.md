@@ -1,8 +1,9 @@
-# AI Task Organizer
+# Tidu
 
-A full-stack task manager where you add tasks in **plain language** — "finish DB
-assignment by Friday, call dentist tomorrow" — and an LLM enriches each one with
-a **category, priority, and due date**, so you never fill out a form. The AI is a
+**Tidu** — an AI-powered task organizer that turns plain-language input into
+categorized, prioritized tasks. You add tasks the way you'd say them — "finish DB
+assignment by Friday, call dentist tomorrow" — and an LLM enriches each one with a
+**category, priority, and due date**, so you never fill out a form. The AI is a
 single, well-isolated feature inside an otherwise ordinary, robust CRUD app: the
 model is a *helpful default*, not a point of failure. If the LLM is slow, down,
 or returns garbage, the task is still saved with sensible defaults and the app
