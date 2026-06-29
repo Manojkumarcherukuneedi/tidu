@@ -1,10 +1,7 @@
 /* ============================================================================
-   Design tokens. Light is the default; [data-theme="dark"] on <html> swaps the
-   palette. Everything downstream references these variables, so theming and
-   future palette tweaks happen in exactly one place.
+   Design tokens. Light is default; [data-theme="dark"] on <html> swaps them.
    ========================================================================== */
 :root {
-  /* spacing scale (4px base) */
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
   --sp-3: 0.75rem;
@@ -13,13 +10,11 @@
   --sp-6: 2rem;
   --sp-7: 3rem;
 
-  /* radius */
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 16px;
   --r-pill: 999px;
 
-  /* type scale */
   --fs-xs: 0.72rem;
   --fs-sm: 0.85rem;
   --fs-base: 0.95rem;
@@ -27,10 +22,9 @@
   --fs-xl: 1.5rem;
   --fs-2xl: 2rem;
 
-  /* light palette */
   --bg: #f4f5f8;
   --surface: #ffffff;
-  --surface-2: #f9fafb;
+  --surface-2: #f1f3f6;
   --border: #e6e8ec;
   --text: #141821;
   --text-muted: #626a78;
@@ -39,7 +33,7 @@
   --accent: #6366f1;
   --accent-strong: #4f46e5;
   --accent-contrast: #ffffff;
-  --accent-soft: #eef0fe;
+  --accent-soft: #eceefe;
 
   --success: #16a34a;
   --danger: #dc2626;
@@ -60,12 +54,16 @@
   --shadow-sm: 0 1px 2px rgba(17, 21, 30, 0.05), 0 1px 3px rgba(17, 21, 30, 0.06);
   --shadow-md: 0 4px 14px rgba(17, 21, 30, 0.08);
   --shadow-lg: 0 12px 32px rgba(17, 21, 30, 0.16);
+
+  --t-fast: 150ms;
+  --t-base: 200ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :root[data-theme="dark"] {
   --bg: #0e1014;
   --surface: #181b22;
-  --surface-2: #1e222b;
+  --surface-2: #20242d;
   --border: #2a2f3a;
   --text: #e8eaed;
   --text-muted: #9aa3b2;
@@ -111,67 +109,177 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* color transitions when toggling themes */
 body,
-.app-shell,
+.sidebar,
 .surface,
 .task-item,
 .stat-card,
+.nav-item,
 .add-input,
 select,
-.btn {
-  transition: background-color 0.25s ease, border-color 0.25s ease,
-    color 0.25s ease;
+.btn,
+.topbar {
+  transition: background-color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease), color var(--t-base) var(--ease);
 }
 
+/* ----- Layout shell -------------------------------------------------------- */
 .app-shell {
   min-height: 100vh;
   background: var(--bg);
 }
+.layout {
+  display: flex;
+  align-items: flex-start;
+}
 
-.app {
+/* ----- Sidebar ------------------------------------------------------------- */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5) var(--sp-3);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.sidebar-brand {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  padding: 0 var(--sp-3) var(--sp-5);
+  color: var(--text);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-item:active {
+  transform: scale(0.98);
+}
+.nav-item.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+.nav-icon {
+  font-size: 1rem;
+  width: 1.2rem;
+  text-align: center;
+}
+.nav-label {
+  flex: 1;
+}
+.nav-badge {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  min-width: 1.3rem;
+  text-align: center;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.nav-item.active .nav-badge {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.nav-badge.danger {
+  background: var(--high-bg);
+  color: var(--high-fg);
+}
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: var(--sp-4);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+.footer-label {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.theme-toggle {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+.theme-toggle:hover {
+  transform: scale(1.08);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ----- Main + topbar ------------------------------------------------------- */
+.main {
+  flex: 1;
+  min-width: 0;
+}
+.topbar {
+  display: none; /* desktop: hidden; shown on mobile */
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.hamburger {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  width: 38px;
+  height: 38px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--text);
+}
+.topbar-title {
+  font-weight: 800;
+  font-size: var(--fs-lg);
+  letter-spacing: -0.02em;
+}
+.content {
   max-width: 760px;
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-4) var(--sp-7);
 }
 
-/* ----- Header -------------------------------------------------------------- */
-.title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-4);
-}
-
-.app-header h1 {
-  margin: 0;
-  font-size: var(--fs-2xl);
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-.subtitle {
-  margin: var(--sp-1) 0 0;
-  color: var(--text-muted);
-  font-size: var(--fs-base);
-  max-width: 48ch;
-}
-
-.theme-toggle {
-  flex-shrink: 0;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  font-size: 1.2rem;
-  cursor: pointer;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.theme-toggle:hover {
-  transform: translateY(-1px) scale(1.05);
-  box-shadow: var(--shadow-md);
+.backdrop {
+  display: none;
 }
 
 /* ----- Stats --------------------------------------------------------------- */
@@ -179,9 +287,8 @@ select,
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--sp-3);
-  margin: var(--sp-5) 0 var(--sp-5);
+  margin-bottom: var(--sp-5);
 }
-
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -192,19 +299,17 @@ select,
   flex-direction: column;
   gap: var(--sp-1);
 }
-
 .stat-value {
   font-size: var(--fs-2xl);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums; /* numbers don't jitter while counting up */
 }
-
 .stat-label {
   font-size: var(--fs-sm);
   color: var(--text-muted);
 }
-
 .stat-success .stat-value {
   color: var(--success);
 }
@@ -221,7 +326,6 @@ select,
   display: flex;
   gap: var(--sp-2);
 }
-
 .add-input {
   flex: 1;
   min-width: 0;
@@ -252,8 +356,8 @@ select,
   border-radius: var(--r-sm);
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s ease, transform 0.1s ease,
-    border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color var(--t-fast) var(--ease),
+    transform 0.1s var(--ease), border-color var(--t-fast) var(--ease);
 }
 .btn:hover:not(:disabled) {
   background: var(--surface-2);
@@ -337,6 +441,11 @@ select:focus {
   border: 1px solid var(--overdue-border);
 }
 
+/* ----- View pane (cross-fade on sidebar view change) ----------------------- */
+.view-pane {
+  animation: viewIn var(--t-base) var(--ease);
+}
+
 /* ----- Board / sections ---------------------------------------------------- */
 .board {
   display: flex;
@@ -382,7 +491,7 @@ select:focus {
   color: var(--text-muted);
 }
 
-/* ----- Task list / items --------------------------------------------------- */
+/* ----- Task items ---------------------------------------------------------- */
 .task-list {
   list-style: none;
   margin: 0;
@@ -391,7 +500,6 @@ select:focus {
   flex-direction: column;
   gap: var(--sp-2);
 }
-
 .task-item {
   display: flex;
   align-items: flex-start;
@@ -401,13 +509,15 @@ select:focus {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-sm);
-  animation: itemIn 0.28s cubic-bezier(0.21, 1, 0.4, 1);
-  transition: box-shadow 0.18s ease, transform 0.18s ease,
-    border-color 0.18s ease, background-color 0.25s ease;
+  animation: itemIn 190ms var(--ease);
+  transition: box-shadow var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    background-color var(--t-base) var(--ease);
 }
 .task-item:hover {
   box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  border-color: var(--text-faint);
 }
 .task-item.completed {
   opacity: 0.62;
@@ -421,11 +531,13 @@ select:focus {
   background: var(--overdue-tint);
 }
 .task-item.removing {
-  animation: itemOut 0.22s ease forwards;
+  animation: itemOut 220ms var(--ease) forwards;
 }
 
-/* animated complete toggle */
+/* animated complete toggle — transitions only, so it fires on toggle, not on
+   mount (avoids replaying for every completed task when a view loads) */
 .check {
+  position: relative;
   flex-shrink: 0;
   width: 22px;
   height: 22px;
@@ -437,8 +549,8 @@ select:focus {
   display: grid;
   place-items: center;
   padding: 0;
-  transition: background-color 0.2s ease, border-color 0.2s ease,
-    transform 0.1s ease;
+  transition: background-color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease), transform var(--t-fast) var(--ease);
 }
 .check:hover:not(:disabled) {
   border-color: var(--accent);
@@ -451,7 +563,7 @@ select:focus {
   font-size: 0.78rem;
   line-height: 1;
   transform: scale(0);
-  transition: transform 0.2s cubic-bezier(0.2, 1.4, 0.4, 1);
+  transition: transform 260ms cubic-bezier(0.2, 1.6, 0.4, 1);
 }
 .check.checked {
   background: var(--success);
@@ -476,7 +588,6 @@ select:focus {
   gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
-
 .badge {
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -501,7 +612,6 @@ select:focus {
   background: var(--low-bg);
   color: var(--low-fg);
 }
-
 .due {
   font-size: var(--fs-sm);
   color: var(--text-muted);
@@ -510,7 +620,6 @@ select:focus {
   color: var(--overdue-fg);
   font-weight: 600;
 }
-
 .task-actions {
   display: flex;
   gap: var(--sp-2);
@@ -631,7 +740,7 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  z-index: 50;
+  z-index: 60;
   max-width: calc(100vw - 2 * var(--sp-4));
 }
 .toast {
@@ -645,7 +754,7 @@ select:focus {
   border-left: 3px solid var(--accent);
   border-radius: var(--r-sm);
   box-shadow: var(--shadow-lg);
-  animation: toastIn 0.25s cubic-bezier(0.21, 1, 0.4, 1);
+  animation: toastIn var(--t-base) var(--ease);
 }
 .toast-success {
   border-left-color: var(--success);
@@ -686,7 +795,7 @@ select:focus {
 @keyframes itemIn {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -698,6 +807,14 @@ select:focus {
     opacity: 0;
     transform: translateX(-16px) scale(0.97);
     margin-bottom: -54px;
+  }
+}
+@keyframes viewIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 @keyframes toastIn {
@@ -716,13 +833,41 @@ select:focus {
   }
 }
 
-/* ----- Responsive ---------------------------------------------------------- */
-@media (max-width: 560px) {
-  .app {
-    padding: var(--sp-5) var(--sp-3) var(--sp-6);
+/* ----- Responsive: sidebar -> drawer + topbar ------------------------------ */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 264px;
+    transform: translateX(-100%);
+    transition: transform var(--t-base) var(--ease);
+    z-index: 45;
+    box-shadow: var(--shadow-lg);
   }
-  .app-header h1 {
-    font-size: var(--fs-xl);
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .topbar {
+    display: flex;
+  }
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-base) var(--ease);
+    z-index: 40;
+  }
+  .backdrop.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .content {
+    padding: var(--sp-5) var(--sp-3) var(--sp-6);
   }
   .add-form {
     flex-wrap: wrap;
@@ -746,12 +891,13 @@ select:focus {
   }
 }
 
-/* respect reduced-motion preferences */
+/* ----- Reduced motion: disable/greatly reduce all motion ------------------- */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
 }

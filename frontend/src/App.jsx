@@ -1,35 +1,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "./api";
-import { computeStats, groupTasks } from "./taskUtils.js";
+import { buildSections, computeViewCounts } from "./taskUtils.js";
 import AddTaskForm from "./components/AddTaskForm.jsx";
+import Sidebar from "./components/Sidebar.jsx";
 import StatsHeader from "./components/StatsHeader.jsx";
-import ThemeToggle from "./components/ThemeToggle.jsx";
 import Toolbar from "./components/Toolbar.jsx";
 import TaskList from "./components/TaskList.jsx";
 import TaskSkeleton from "./components/TaskSkeleton.jsx";
 import ToastContainer from "./components/Toast.jsx";
 
 /**
- * Smart container. Owns every piece of state and all API orchestration, then
- * passes plain data + callbacks down to presentational children (StatsHeader,
- * Toolbar, TaskList -> TaskSection -> TaskItem, ToastContainer). Theme and
- * toasts live in React state only — no browser storage.
- *
- * Derived views (stats, grouped sections) are computed with useMemo from the
- * raw `tasks` array, so the stats header and section grouping update live
- * whenever tasks change.
+ * Smart container. Owns all state + API orchestration; children are
+ * presentational. Two filter dimensions are intentionally separate:
+ *   - sidebar `view` (all / today / overdue / completed) — derived CLIENT-side
+ *     from due_date + completed via taskUtils.buildSections.
+ *   - `filter` (category) — applied SERVER-side via ?category=.
+ * Derived views (counts, sections) are useMemo'd off the raw `tasks` array so
+ * everything updates live when tasks change. Theme, view, and toasts all live
+ * in React state only — no browser storage.
  */
 export default function App() {
   const [tasks, setTasks] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(""); // category (server-side)
   const [sort, setSort] = useState("due");
+  const [view, setView] = useState("all"); // sidebar view (client-side)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState("light");
   const [toasts, setToasts] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
 
-  // --- Theme (session-only; applied to <html> so CSS vars cascade) ----------
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
@@ -57,8 +58,6 @@ export default function App() {
     }
   }, []);
 
-  // Categories come from an unfiltered fetch so the dropdown always lists every
-  // category, even while a filter is active.
   const loadCategories = useCallback(async () => {
     try {
       const all = await api.listTasks("");
@@ -75,7 +74,7 @@ export default function App() {
     loadCategories();
   }, [loadCategories]);
 
-  // --- Mutations (each shows a toast; errors re-throw for child UIs) ---------
+  // --- Mutations -------------------------------------------------------------
   async function handleAdd(rawText) {
     try {
       const created = await api.createTask({ raw_text: rawText });
@@ -116,56 +115,81 @@ export default function App() {
     }
   }
 
-  // --- Derived views (recompute when tasks/sort change) ----------------------
-  const stats = useMemo(() => computeStats(tasks), [tasks]);
-  const sections = useMemo(() => groupTasks(tasks, sort), [tasks, sort]);
+  function selectView(next) {
+    setView(next);
+    setSidebarOpen(false); // close the drawer after navigating on mobile
+  }
+
+  // --- Derived views ---------------------------------------------------------
+  const counts = useMemo(() => computeViewCounts(tasks), [tasks]);
+  const stats = useMemo(
+    () => ({ total: counts.all, completed: counts.completed, overdue: counts.overdue }),
+    [counts]
+  );
+  const sections = useMemo(() => buildSections(tasks, view, sort), [tasks, view, sort]);
 
   return (
     <div className="app-shell">
-      <div className="app">
-        <header className="app-header">
-          <div className="title-row">
-            <div>
-              <h1>Tidu</h1>
-              <p className="subtitle">
-                Type a task in plain language — the AI fills in the category,
-                priority, and due date.
-              </p>
-            </div>
-            <ThemeToggle theme={theme} onToggle={() => setTheme((t) => (t === "light" ? "dark" : "light"))} />
-          </div>
-          <StatsHeader stats={stats} />
-        </header>
-
-        <AddTaskForm onAdd={handleAdd} />
-
-        <Toolbar
-          categories={categories}
-          filter={filter}
-          onFilterChange={setFilter}
-          sort={sort}
-          onSortChange={setSort}
+      <div className="layout">
+        <Sidebar
+          activeView={view}
+          counts={counts}
+          onSelectView={selectView}
+          theme={theme}
+          onToggleTheme={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
+          open={sidebarOpen}
+        />
+        <div
+          className={`backdrop ${sidebarOpen ? "show" : ""}`}
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
 
-        {error && (
-          <div className="banner banner-error" role="alert">
-            <span>⚠️ {error}</span>
-            <button className="btn btn-sm" onClick={() => loadTasks(filter)}>
-              Retry
+        <main className="main">
+          <header className="topbar">
+            <button
+              className="hamburger"
+              onClick={() => setSidebarOpen((o) => !o)}
+              aria-label="Toggle navigation"
+            >
+              ☰
             </button>
-          </div>
-        )}
+            <span className="topbar-title">Tidu</span>
+          </header>
 
-        {loading ? (
-          <TaskSkeleton rows={4} />
-        ) : (
-          <TaskList
-            sections={sections}
-            filter={filter}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-          />
-        )}
+          <div className="content">
+            <StatsHeader stats={stats} />
+            <AddTaskForm onAdd={handleAdd} />
+            <Toolbar
+              categories={categories}
+              filter={filter}
+              onFilterChange={setFilter}
+              sort={sort}
+              onSortChange={setSort}
+            />
+
+            {error && (
+              <div className="banner banner-error" role="alert">
+                <span>⚠️ {error}</span>
+                <button className="btn btn-sm" onClick={() => loadTasks(filter)}>
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {loading ? (
+              <TaskSkeleton rows={4} />
+            ) : (
+              <TaskList
+                sections={sections}
+                view={view}
+                categoryFilter={filter}
+                onUpdate={handleUpdate}
+                onDelete={handleDelete}
+              />
+            )}
+          </div>
+        </main>
       </div>
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

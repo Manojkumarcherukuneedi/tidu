@@ -66,11 +66,42 @@ export function groupTasks(tasks, sort = "due", today = todayStr()) {
   }));
 }
 
-/** Live stats for the header. */
-export function computeStats(tasks, today = todayStr()) {
+/** Counts used by both the stats row and the sidebar nav badges. */
+export function computeViewCounts(tasks, today = todayStr()) {
   return {
-    total: tasks.length,
-    completed: tasks.filter((t) => t.completed).length,
+    all: tasks.length,
+    today: tasks.filter((t) => bucketOf(t, today) === "today").length,
     overdue: tasks.filter((t) => isOverdue(t, today)).length,
+    completed: tasks.filter((t) => t.completed).length,
   };
+}
+
+// Metadata for the single-bucket sidebar views (everything except "all").
+const VIEW_META = {
+  today: { title: "Today", tone: "accent", match: (t, d) => bucketOf(t, d) === "today" },
+  overdue: { title: "Overdue", tone: "danger", match: (t, d) => isOverdue(t, d) },
+  completed: { title: "Completed", tone: "muted", match: (t) => t.completed },
+};
+
+/**
+ * Build the sections to render for the active sidebar view.
+ *
+ *  - "all"  -> the full grouped board (Overdue / Today / Upcoming / No date /
+ *              Completed) with section headers, via groupTasks.
+ *  - else   -> a single flat, sorted list for that view, with no header (the
+ *              sidebar nav already labels it). This is the one place sidebar
+ *              filtering lives, and it reuses the same bucket logic as the
+ *              grouping — no duplicated date rules.
+ */
+export function buildSections(tasks, view, sort = "due", today = todayStr()) {
+  if (view === "all" || !VIEW_META[view]) {
+    return groupTasks(tasks, sort, today);
+  }
+  const meta = VIEW_META[view];
+  const filtered = sortTasks(
+    tasks.filter((t) => meta.match(t, today)),
+    sort
+  );
+  if (filtered.length === 0) return [];
+  return [{ key: view, title: meta.title, tone: meta.tone, headerless: true, tasks: filtered }];
 }
