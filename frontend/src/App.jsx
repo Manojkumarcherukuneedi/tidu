@@ -1,198 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import * as api from "./api";
-import { buildSections, computeViewCounts } from "./taskUtils.js";
-import AddTaskForm from "./components/AddTaskForm.jsx";
-import Sidebar from "./components/Sidebar.jsx";
-import StatsHeader from "./components/StatsHeader.jsx";
-import Toolbar from "./components/Toolbar.jsx";
-import TaskList from "./components/TaskList.jsx";
-import TaskSkeleton from "./components/TaskSkeleton.jsx";
-import ToastContainer from "./components/Toast.jsx";
+import AuthPage from "./AuthPage.jsx";
+import Dashboard from "./Dashboard.jsx";
 
 /**
- * Smart container. Owns all state + API orchestration; children are
- * presentational. Two filter dimensions are intentionally separate:
- *   - sidebar `view` (all / today / overdue / completed) — derived CLIENT-side
- *     from due_date + completed via taskUtils.buildSections.
- *   - `filter` (category) — applied SERVER-side via ?category=.
- * Derived views (counts, sections) are useMemo'd off the raw `tasks` array so
- * everything updates live when tasks change. Theme, view, and toasts all live
- * in React state only — no browser storage.
+ * Top-level auth gate. Holds the session (token + email) in React state,
+ * seeded from localStorage so a refresh keeps you logged in. Renders the login
+ * /signup page when logged out, and the task dashboard when logged in.
+ *
+ * api.js broadcasts `tidu-unauthorized` when a protected request gets a 401
+ * (expired/invalid token); we listen for it and drop back to the login page.
  */
 export default function App() {
-  const [tasks, setTasks] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [filter, setFilter] = useState(""); // category (server-side)
-  const [sort, setSort] = useState("due");
-  const [view, setView] = useState("all"); // sidebar view (client-side)
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [theme, setTheme] = useState("light");
-  const [toasts, setToasts] = useState([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [token, setToken] = useState(() => api.getToken());
+  const [email, setEmail] = useState(() => api.getEmail());
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-  }, [theme]);
-
-  // --- Toasts ----------------------------------------------------------------
-  const toastId = useRef(0);
-  const addToast = useCallback((type, message) => {
-    const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, type, message }]);
-  }, []);
-  const dismissToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    const onUnauthorized = () => {
+      setToken(null);
+      setEmail("");
+    };
+    window.addEventListener("tidu-unauthorized", onUnauthorized);
+    return () => window.removeEventListener("tidu-unauthorized", onUnauthorized);
   }, []);
 
-  // --- Data loading ----------------------------------------------------------
-  const loadTasks = useCallback(async (activeFilter) => {
-    setLoading(true);
-    setError(null);
-    try {
-      setTasks(await api.listTasks(activeFilter));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadCategories = useCallback(async () => {
-    try {
-      const all = await api.listTasks("");
-      setCategories([...new Set(all.map((t) => t.category).filter(Boolean))].sort());
-    } catch {
-      /* non-fatal */
-    }
-  }, []);
-
-  useEffect(() => {
-    loadTasks(filter);
-  }, [filter, loadTasks]);
-  useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
-
-  // --- Mutations -------------------------------------------------------------
-  async function handleAdd(rawText) {
-    try {
-      const created = await api.createTask({ raw_text: rawText });
-      await Promise.all([loadTasks(filter), loadCategories()]);
-      const bits = [created.category, created.priority].filter(Boolean).join(" · ");
-      addToast("success", bits ? `Added · ${bits}` : "Task added");
-    } catch (err) {
-      addToast("error", err.message);
-      throw err;
-    }
+  function handleAuthed({ access_token, email: userEmail }) {
+    api.saveSession(access_token, userEmail);
+    setToken(access_token);
+    setEmail(userEmail);
   }
 
-  async function handleUpdate(id, patch) {
-    try {
-      const updated = await api.updateTask(id, patch);
-      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
-      loadCategories();
-      if ("completed" in patch) {
-        addToast("success", patch.completed ? "Marked complete 🎉" : "Marked active");
-      } else {
-        addToast("success", "Task updated");
-      }
-    } catch (err) {
-      addToast("error", err.message);
-      throw err;
-    }
+  function handleLogout() {
+    api.clearSession();
+    setToken(null);
+    setEmail("");
   }
 
-  async function handleDelete(id) {
-    try {
-      await api.deleteTask(id);
-      setTasks((prev) => prev.filter((t) => t.id !== id));
-      loadCategories();
-      addToast("info", "Task deleted");
-    } catch (err) {
-      addToast("error", err.message);
-      throw err;
-    }
+  if (!token) {
+    return <AuthPage onAuthed={handleAuthed} />;
   }
-
-  function selectView(next) {
-    setView(next);
-    setSidebarOpen(false); // close the drawer after navigating on mobile
-  }
-
-  // --- Derived views ---------------------------------------------------------
-  const counts = useMemo(() => computeViewCounts(tasks), [tasks]);
-  const stats = useMemo(
-    () => ({ total: counts.all, completed: counts.completed, overdue: counts.overdue }),
-    [counts]
-  );
-  const sections = useMemo(() => buildSections(tasks, view, sort), [tasks, view, sort]);
-
-  return (
-    <div className="app-shell">
-      <div className="layout">
-        <Sidebar
-          activeView={view}
-          counts={counts}
-          onSelectView={selectView}
-          theme={theme}
-          onToggleTheme={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-          open={sidebarOpen}
-        />
-        <div
-          className={`backdrop ${sidebarOpen ? "show" : ""}`}
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-
-        <main className="main">
-          <header className="topbar">
-            <button
-              className="hamburger"
-              onClick={() => setSidebarOpen((o) => !o)}
-              aria-label="Toggle navigation"
-            >
-              ☰
-            </button>
-            <span className="topbar-title">Tidu</span>
-          </header>
-
-          <div className="content">
-            <StatsHeader stats={stats} />
-            <AddTaskForm onAdd={handleAdd} />
-            <Toolbar
-              categories={categories}
-              filter={filter}
-              onFilterChange={setFilter}
-              sort={sort}
-              onSortChange={setSort}
-            />
-
-            {error && (
-              <div className="banner banner-error" role="alert">
-                <span>⚠️ {error}</span>
-                <button className="btn btn-sm" onClick={() => loadTasks(filter)}>
-                  Retry
-                </button>
-              </div>
-            )}
-
-            {loading ? (
-              <TaskSkeleton rows={4} />
-            ) : (
-              <TaskList
-                sections={sections}
-                view={view}
-                categoryFilter={filter}
-                onUpdate={handleUpdate}
-                onDelete={handleDelete}
-              />
-            )}
-          </div>
-        </main>
-      </div>
-
-      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-    </div>
-  );
+  return <Dashboard email={email} onLogout={handleLogout} />;
 }

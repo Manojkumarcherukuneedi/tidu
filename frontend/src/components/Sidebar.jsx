@@ -21,6 +21,8 @@ export default function Sidebar({
   theme,
   onToggleTheme,
   open,
+  email,
+  onLogout,
 }) {
   return (
     <aside className={`sidebar ${open ? "open" : ""}`}>
@@ -49,10 +51,25 @@ export default function Sidebar({
       </nav>
 
       <div className="sidebar-footer">
-        <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-        <span className="footer-label">
-          {theme === "dark" ? "Dark mode" : "Light mode"}
-        </span>
+        {email && (
+          <div className="sidebar-user" title={email}>
+            <span className="user-avatar" aria-hidden="true">
+              {email[0].toUpperCase()}
+            </span>
+            <span className="user-email">{email}</span>
+          </div>
+        )}
+        <div className="footer-actions">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <span className="footer-label">
+            {theme === "dark" ? "Dark mode" : "Light mode"}
+          </span>
+          {onLogout && (
+            <button className="btn btn-sm logout-btn" onClick={onLogout}>
+              Log out
+            </button>
+          )}
+        </div>
       </div>
     </aside>
   );

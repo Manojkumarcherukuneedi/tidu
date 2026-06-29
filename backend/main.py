@@ -1,12 +1,13 @@
-"""FastAPI application entry point for the AI Task Organizer.
+"""FastAPI application entry point for Tidu.
 
 Slice 1: app wiring, MySQL table bootstrap, health check.
-Slice 2: CRUD routes for /tasks (no AI yet).
-Slice 3: AI enrichment on POST /tasks (read/update/delete stay AI-free).
+Slice 2: CRUD routes for /tasks.
+Slice 3: AI enrichment on POST /tasks.
+Slice 6: email/password auth (JWT). All /tasks routes now require a logged-in
+         user and are scoped to that user.
 
 Route handlers here are intentionally thin: they validate input via Pydantic,
-delegate all database work to `crud` and all LLM work to `ai_service`, and
-translate "not found" into a 404.
+delegate database work to `crud`, LLM work to `ai_service`, and auth to `auth`.
 """
 
 from __future__ import annotations
@@ -17,8 +18,16 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import ai_service, crud, database
-from .models import HealthResponse, Task, TaskCreate, TaskUpdate
+from . import ai_service, auth, crud, database
+from .models import (
+    HealthResponse,
+    LoginRequest,
+    SignupRequest,
+    Task,
+    TaskCreate,
+    TaskUpdate,
+    Token,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai_task_organizer")
@@ -29,7 +38,7 @@ async def lifespan(app: FastAPI):
     """Bootstrap the database on startup without crashing if MySQL is down."""
     try:
         database.init_db()
-        logger.info("Database initialized: `tasks` table is ready.")
+        logger.info("Database initialized: `users` and `tasks` tables are ready.")
     except Exception as exc:  # noqa: BLE001 - log and continue
         logger.warning(
             "Could not initialize database on startup (%s). "
@@ -39,11 +48,8 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Tidu", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Tidu", version="0.6.0", lifespan=lifespan)
 
-# Allow the React dev server (slice 4) to call the API during development.
-# Both localhost and 127.0.0.1 are listed because the browser treats them as
-# distinct origins, and Vite/users may use either.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -58,12 +64,15 @@ app.add_middleware(
 )
 
 
-# --- Shared dependency: fetch a task or raise 404 -----------------------------
-# Centralizing this here means GET-one, PUT, and DELETE all share the exact
-# same "does this id exist?" check and the exact same 404 error shape. No
-# duplicated lookup logic, and one place to change the error message.
-def get_existing_task(task_id: int) -> dict:
-    task = crud.get_task(task_id)
+# --- Shared dependency: fetch the current user's task or 404 ------------------
+# Depends on get_current_user, so the lookup is automatically scoped to the
+# logged-in user. A task that exists but belongs to someone else returns the
+# same 404 as one that doesn't exist — no existence leak (see crud.get_task).
+def get_existing_task(
+    task_id: int,
+    current_user: dict = Depends(auth.get_current_user),
+) -> dict:
+    task = crud.get_task(task_id, current_user["id"])
     if task is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -75,49 +84,68 @@ def get_existing_task(task_id: int) -> dict:
 # --- System -------------------------------------------------------------------
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health() -> HealthResponse:
-    """Liveness + DB connectivity check."""
+    """Liveness + DB connectivity check (unauthenticated)."""
     db_ok = database.check_connection()
-    return HealthResponse(
-        status="ok",
-        database="connected" if db_ok else "disconnected",
-    )
+    return HealthResponse(status="ok", database="connected" if db_ok else "disconnected")
 
 
-# --- Tasks CRUD ---------------------------------------------------------------
-@app.post(
-    "/tasks",
-    response_model=Task,
-    status_code=status.HTTP_201_CREATED,
-    tags=["tasks"],
-)
-def create_task(payload: TaskCreate) -> dict:
-    """Create a task, enriching blank fields via the LLM.
+# --- Auth ---------------------------------------------------------------------
+@app.post("/auth/signup", response_model=Token, status_code=status.HTTP_201_CREATED, tags=["auth"])
+def signup(payload: SignupRequest) -> Token:
+    """Create a user and return a JWT. 409 if the email is already registered."""
+    if crud.get_user_by_email(payload.email) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+    user = crud.create_user(payload.email, auth.hash_password(payload.password))
+    token = auth.create_access_token(user["id"])
+    return Token(access_token=token, email=user["email"])
 
-    The AI step never blocks creation: `ai_service.enrich_task` degrades to safe
-    defaults on any failure, so this route always returns 201. We only call the
-    LLM when the user left a field for it to fill (user-provided values win).
+
+@app.post("/auth/login", response_model=Token, tags=["auth"])
+def login(payload: LoginRequest) -> Token:
+    """Verify credentials and return a JWT. 401 on any mismatch.
+
+    The same 401 is returned for an unknown email and a wrong password, so we
+    don't reveal which emails are registered.
     """
+    user = crud.get_user_by_email(payload.email)
+    if user is None or not auth.verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+        )
+    token = auth.create_access_token(user["id"])
+    return Token(access_token=token, email=user["email"])
+
+
+# --- Tasks (all require auth, all scoped to the current user) ------------------
+@app.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED, tags=["tasks"])
+def create_task(
+    payload: TaskCreate,
+    current_user: dict = Depends(auth.get_current_user),
+) -> dict:
+    """Create a task for the current user, enriching blank fields via the LLM."""
     if ai_service.needs_enrichment(payload):
         enrichment = ai_service.enrich_task(payload.raw_text)
         payload = ai_service.apply_enrichment(payload, enrichment)
-    return crud.create_task(payload)
+    return crud.create_task(payload, current_user["id"])
 
 
 @app.get("/tasks", response_model=list[Task], tags=["tasks"])
 def list_tasks(
     category: str | None = None,
     completed: bool | None = None,
+    current_user: dict = Depends(auth.get_current_user),
 ) -> list[dict]:
-    """List tasks, optionally filtered by ?category= and ?completed=.
-
-    Returns an empty array (200) when nothing matches — not an error.
-    """
-    return crud.list_tasks(category=category, completed=completed)
+    """List ONLY the current user's tasks, optionally filtered."""
+    return crud.list_tasks(current_user["id"], category=category, completed=completed)
 
 
 @app.get("/tasks/{task_id}", response_model=Task, tags=["tasks"])
 def get_task(task: dict = Depends(get_existing_task)) -> dict:
-    """Return one task, or 404 if the id doesn't exist."""
+    """Return one of the current user's tasks, or 404."""
     return task
 
 
@@ -125,11 +153,11 @@ def get_task(task: dict = Depends(get_existing_task)) -> dict:
 def update_task(
     task_id: int,
     payload: TaskUpdate,
+    current_user: dict = Depends(auth.get_current_user),
     _existing: dict = Depends(get_existing_task),
 ) -> dict:
-    """Partially update a task. 404 if it doesn't exist (via the dependency)."""
-    updated = crud.update_task(task_id, payload)
-    # The dependency already guaranteed existence, so this is defensive.
+    """Partially update the current user's task. 404 if missing or not theirs."""
+    updated = crud.update_task(task_id, current_user["id"], payload)
     if updated is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -138,15 +166,12 @@ def update_task(
     return updated
 
 
-@app.delete(
-    "/tasks/{task_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    tags=["tasks"],
-)
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["tasks"])
 def delete_task(
     task_id: int,
+    current_user: dict = Depends(auth.get_current_user),
     _existing: dict = Depends(get_existing_task),
 ) -> Response:
-    """Delete a task. 204 on success, 404 if it doesn't exist."""
-    crud.delete_task(task_id)
+    """Delete the current user's task. 204 on success, 404 if missing/not theirs."""
+    crud.delete_task(task_id, current_user["id"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)

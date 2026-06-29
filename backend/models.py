@@ -16,7 +16,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 # Fallback values when the LLM call fails or returns invalid JSON (slice 3).
 DEFAULT_CATEGORY = "Uncategorized"
@@ -32,6 +32,41 @@ class HealthResponse(BaseModel):
 
     status: str
     database: str
+
+
+# --- Auth schemas (Slice 6) ---------------------------------------------------
+class SignupRequest(BaseModel):
+    """Request body for POST /auth/signup.
+
+    EmailStr validates the address shape; password has a minimum length. The
+    raw password is validated and hashed — it is never stored or returned.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    """Request body for POST /auth/login."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    """Auth response: the JWT plus the email (so the UI can show who's logged in).
+
+    Note there is NO user model that exposes password_hash anywhere — the hash
+    never leaves the database layer.
+    """
+
+    access_token: str
+    token_type: str = "bearer"
+    email: EmailStr
 
 
 class TaskCreate(BaseModel):

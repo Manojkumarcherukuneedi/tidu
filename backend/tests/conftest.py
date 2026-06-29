@@ -1,18 +1,18 @@
-"""Shared pytest fixtures that make the whole suite hermetic.
+"""Shared pytest fixtures that keep the suite hermetic.
 
-Two external dependencies are stubbed so the suite runs offline, for free, and
-with no setup — which is exactly what a reviewer or CI needs:
+External dependencies are stubbed so the suite runs offline, free, and with no
+setup:
 
-  1. The LLM (`ai_service._call_llm`) is blocked by default via an autouse
-     fixture, so NO test can ever reach the real Anthropic API (even by
-     accident). Tests that want a specific model response override it.
+  1. The LLM (`ai_service._call_llm`) is blocked by default (autouse), so no
+     test reaches the real Anthropic API. Tests override it for specific output.
+  2. The database (`crud.*`) is an in-memory store — users + per-user tasks.
+  3. `database.init_db` is no-op'd, and `auth.JWT_SECRET` is set to a test value
+     so JWTs can be signed/verified without a real secret.
 
-  2. The database (`crud.*`) is replaced with an in-memory store, so route
-     tests exercise the real FastAPI routes + validation + 404 handling +
-     enrichment merge without needing a running MySQL.
-
-`database.init_db` is also no-op'd so the app's startup lifespan doesn't try to
-connect to MySQL when the TestClient boots.
+Auth fixtures:
+  - `client`     -> a TestClient authenticated as a default user (user A).
+  - `anon_client`-> a TestClient with no Authorization header.
+  - `make_user`  -> create another user and get a valid token (e.g. user B).
 """
 
 from datetime import datetime
@@ -20,7 +20,7 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import ai_service, crud, database
+from backend import ai_service, auth, crud, database
 from backend.main import app
 from backend.models import TaskCreate, TaskUpdate
 
@@ -31,25 +31,52 @@ def _blocked_llm(*_args, **_kwargs):
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
-    """Applied to every test: no real LLM, no DB bootstrap on startup."""
+    """Applied to every test: no real LLM, no DB bootstrap, a test JWT secret."""
     monkeypatch.setattr(ai_service, "_call_llm", _blocked_llm)
     monkeypatch.setattr(database, "init_db", lambda: None)
+    monkeypatch.setattr(auth, "JWT_SECRET", "test-secret-key-not-used-in-production")
 
 
 class InMemoryStore:
-    """A tiny dict-backed stand-in for the crud layer.
+    """Dict-backed stand-in for the crud layer — users and per-user tasks.
 
-    Mirrors the real crud contract exactly: returns plain dicts (or None for a
-    missing id), so the routes can't tell the difference.
+    Mirrors the real crud contract: returns plain dicts (or None), and every
+    task method is scoped to a user_id, so the ownership rules are exercised.
     """
 
     def __init__(self):
-        self.rows = {}
-        self.next_id = 1
+        self.users = {}
+        self.tasks = {}
+        self.next_user_id = 1
+        self.next_task_id = 1
 
-    def create(self, data: TaskCreate) -> dict:
+    # --- users ---
+    def create_user(self, email, password_hash):
         row = {
-            "id": self.next_id,
+            "id": self.next_user_id,
+            "email": email,
+            "password_hash": password_hash,
+            "created_at": datetime(2026, 1, 1, 12, 0, 0),
+        }
+        self.users[self.next_user_id] = row
+        self.next_user_id += 1
+        return dict(row)
+
+    def get_user_by_email(self, email):
+        for u in self.users.values():
+            if u["email"] == email:
+                return dict(u)
+        return None
+
+    def get_user_by_id(self, user_id):
+        u = self.users.get(user_id)
+        return dict(u) if u else None
+
+    # --- tasks (scoped to user_id) ---
+    def create_task(self, data: TaskCreate, user_id: int):
+        row = {
+            "id": self.next_task_id,
+            "user_id": user_id,
             "raw_text": data.raw_text,
             "title": data.title,
             "category": data.category,
@@ -58,47 +85,77 @@ class InMemoryStore:
             "completed": False,
             "created_at": datetime(2026, 1, 1, 12, 0, 0),
         }
-        self.rows[self.next_id] = row
-        self.next_id += 1
+        self.tasks[self.next_task_id] = row
+        self.next_task_id += 1
         return dict(row)
 
-    def list(self, category=None, completed=None) -> list:
-        items = list(self.rows.values())
+    def list_tasks(self, user_id, category=None, completed=None):
+        items = [t for t in self.tasks.values() if t["user_id"] == user_id]
         if category is not None:
-            items = [r for r in items if r["category"] == category]
+            items = [t for t in items if t["category"] == category]
         if completed is not None:
-            items = [r for r in items if bool(r["completed"]) == completed]
-        # newest first, mirroring the real ORDER BY created_at DESC, id DESC
-        return [dict(r) for r in sorted(items, key=lambda r: r["id"], reverse=True)]
+            items = [t for t in items if bool(t["completed"]) == completed]
+        return [dict(t) for t in sorted(items, key=lambda t: t["id"], reverse=True)]
 
-    def get(self, task_id: int):
-        row = self.rows.get(task_id)
-        return dict(row) if row else None
+    def get_task(self, task_id, user_id):
+        t = self.tasks.get(task_id)
+        return dict(t) if t and t["user_id"] == user_id else None
 
-    def update(self, task_id: int, data: TaskUpdate):
-        if task_id not in self.rows:
+    def update_task(self, task_id, user_id, data: TaskUpdate):
+        t = self.tasks.get(task_id)
+        if not t or t["user_id"] != user_id:
             return None
-        self.rows[task_id].update(data.model_dump(exclude_unset=True))
-        return dict(self.rows[task_id])
+        t.update(data.model_dump(exclude_unset=True))
+        return dict(t)
 
-    def delete(self, task_id: int) -> bool:
-        return self.rows.pop(task_id, None) is not None
+    def delete_task(self, task_id, user_id):
+        t = self.tasks.get(task_id)
+        if not t or t["user_id"] != user_id:
+            return False
+        del self.tasks[task_id]
+        return True
 
 
 @pytest.fixture
-def store(monkeypatch):
-    """Swap the DB-backed crud functions for the in-memory store."""
+def store(monkeypatch, _hermetic):
     s = InMemoryStore()
-    monkeypatch.setattr(crud, "create_task", s.create)
-    monkeypatch.setattr(crud, "list_tasks", lambda category=None, completed=None: s.list(category, completed))
-    monkeypatch.setattr(crud, "get_task", s.get)
-    monkeypatch.setattr(crud, "update_task", s.update)
-    monkeypatch.setattr(crud, "delete_task", s.delete)
+    monkeypatch.setattr(crud, "create_user", s.create_user)
+    monkeypatch.setattr(crud, "get_user_by_email", s.get_user_by_email)
+    monkeypatch.setattr(crud, "get_user_by_id", s.get_user_by_id)
+    monkeypatch.setattr(crud, "create_task", s.create_task)
+    monkeypatch.setattr(crud, "list_tasks", s.list_tasks)
+    monkeypatch.setattr(crud, "get_task", s.get_task)
+    monkeypatch.setattr(crud, "update_task", s.update_task)
+    monkeypatch.setattr(crud, "delete_task", s.delete_task)
     return s
 
 
 @pytest.fixture
-def client(store):
-    """A TestClient backed by the in-memory store (no MySQL required)."""
-    with TestClient(app) as test_client:
-        yield test_client
+def make_user(store):
+    """Create a user directly in the store and return (user, bearer_token).
+
+    Uses a placeholder hash — these users authenticate via their token, so no
+    bcrypt is needed here (the real signup/login path is exercised separately).
+    """
+    def _make(email):
+        user = store.create_user(email, "placeholder-hash")
+        token = auth.create_access_token(user["id"])
+        return user, token
+
+    return _make
+
+
+@pytest.fixture
+def client(store, make_user):
+    """TestClient authenticated as a default user (user A)."""
+    _, token = make_user("user-a@example.com")
+    with TestClient(app) as c:
+        c.headers.update({"Authorization": f"Bearer {token}"})
+        yield c
+
+
+@pytest.fixture
+def anon_client(store):
+    """TestClient with no auth header (for auth/unauthorized tests)."""
+    with TestClient(app) as c:
+        yield c
