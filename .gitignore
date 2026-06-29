@@ -20,3 +20,7 @@ npm-debug.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# AI tooling artifacts (Claude Code) — not part of the app
+.claude/
+CLAUDE.md
