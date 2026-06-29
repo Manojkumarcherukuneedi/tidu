@@ -867,6 +867,227 @@ select:focus {
   }
 }
 
+/* ----- Plan my day button (top of content) --------------------------------- */
+.content-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-4);
+}
+.content-greeting {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.plan-btn {
+  font-weight: 600;
+}
+
+/* ----- Subtasks (under a task) --------------------------------------------- */
+.subtask-status {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+.subtask-status.error {
+  color: var(--danger);
+}
+.subtask-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.subtask {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  animation: itemIn 160ms var(--ease);
+}
+.subtask-check {
+  flex-shrink: 0;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid var(--text-faint);
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transition: background-color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease);
+}
+.subtask-check:hover {
+  border-color: var(--accent);
+}
+.subtask-check .check-mark {
+  color: #fff;
+  font-size: 0.6rem;
+  line-height: 1;
+  transform: scale(0);
+  transition: transform 220ms cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.subtask-check.checked {
+  background: var(--success);
+  border-color: var(--success);
+}
+.subtask-check.checked .check-mark {
+  transform: scale(1);
+}
+.subtask-text {
+  flex: 1;
+  font-size: var(--fs-sm);
+  word-break: break-word;
+}
+.subtask.done .subtask-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.subtask-del {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.subtask:hover .subtask-del {
+  opacity: 1;
+}
+.subtask-del:hover {
+  color: var(--danger);
+}
+
+/* ----- Modal (Plan my day) ------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  z-index: 70;
+  animation: viewIn var(--t-base) var(--ease);
+}
+.modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--sp-5);
+  animation: modalIn var(--t-base) var(--ease);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+}
+.modal-title {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+.modal-close {
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.3rem;
+}
+.modal-close:hover {
+  color: var(--text);
+}
+.plan-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+}
+.modal-error {
+  color: var(--danger);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+.plan-note {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--med-fg);
+  background: var(--med-bg);
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--r-sm);
+}
+.plan-summary {
+  margin: 0 0 var(--sp-4);
+  color: var(--text);
+}
+.plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.plan-item {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  animation: itemIn 180ms var(--ease);
+}
+.plan-rank {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+.plan-item-title {
+  font-weight: 600;
+}
+.plan-item-reason {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* ----- Auth page (login / signup) ------------------------------------------ */
 .auth-page {
   min-height: 100vh;

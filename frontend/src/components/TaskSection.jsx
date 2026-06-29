@@ -5,7 +5,14 @@ import TaskItem from "./TaskItem.jsx";
  * (Overdue / Today / Upcoming / No date / Completed). In a single sidebar view
  * the section is `headerless` — the sidebar nav already names it.
  */
-export default function TaskSection({ section, onUpdate, onDelete }) {
+export default function TaskSection({
+  section,
+  onUpdate,
+  onDelete,
+  onBreakdown,
+  onSubtaskToggle,
+  onSubtaskDelete,
+}) {
   return (
     <section className={`task-section tone-${section.tone}`}>
       {!section.headerless && (
@@ -17,7 +24,15 @@ export default function TaskSection({ section, onUpdate, onDelete }) {
       )}
       <ul className="task-list">
         {section.tasks.map((task) => (
-          <TaskItem key={task.id} task={task} onUpdate={onUpdate} onDelete={onDelete} />
+          <TaskItem
+            key={task.id}
+            task={task}
+            onUpdate={onUpdate}
+            onDelete={onDelete}
+            onBreakdown={onBreakdown}
+            onSubtaskToggle={onSubtaskToggle}
+            onSubtaskDelete={onSubtaskDelete}
+          />
         ))}
       </ul>
     </section>

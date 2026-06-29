@@ -102,3 +102,23 @@ export function updateTask(id, patch) {
 export function deleteTask(id) {
   return request(`/tasks/${id}`, { method: "DELETE" });
 }
+
+// --- Slice 7: subtasks + plan-my-day -----------------------------------------
+export function breakdownTask(id) {
+  return request(`/tasks/${id}/breakdown`, { method: "POST" });
+}
+
+export function updateSubtask(id, completed) {
+  return request(`/subtasks/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ completed }),
+  });
+}
+
+export function deleteSubtask(id) {
+  return request(`/subtasks/${id}`, { method: "DELETE" });
+}
+
+export function planMyDay() {
+  return request("/plan-my-day", { method: "POST" });
+}

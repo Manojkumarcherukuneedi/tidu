@@ -111,10 +111,21 @@ class TaskUpdate(BaseModel):
     completed: Optional[bool] = None
 
 
-class Task(BaseModel):
-    """Response model: a full task row as stored in MySQL."""
+class Subtask(BaseModel):
+    """A single AI-generated subtask (Slice 7)."""
 
-    # from_attributes isn't needed (we return dicts), but allows ORM-style use.
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    task_id: int
+    text: str
+    completed: bool = False
+    created_at: Optional[datetime] = None
+
+
+class Task(BaseModel):
+    """Response model: a full task row, with its subtasks (if any)."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -125,3 +136,44 @@ class Task(BaseModel):
     due_date: Optional[date] = None
     completed: bool = False
     created_at: Optional[datetime] = None
+    subtasks: list[Subtask] = []
+
+
+class SubtaskUpdate(BaseModel):
+    """Request body for PUT /subtasks/{id} — toggle complete."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    completed: bool
+
+
+# --- Slice 7 AI feature responses ---------------------------------------------
+class BreakdownResponse(BaseModel):
+    """Response from POST /tasks/{id}/breakdown.
+
+    `generated` is False when the AI couldn't produce steps (and we degraded
+    gracefully instead of 500-ing), so the UI can show a friendly message.
+    """
+
+    subtasks: list[Subtask]
+    generated: bool
+
+
+class PlanItem(BaseModel):
+    """One step in a day plan: a task reference + why it's ordered there."""
+
+    task_id: int
+    title: str
+    reason: str
+
+
+class DayPlan(BaseModel):
+    """Response from POST /plan-my-day.
+
+    `source` is "ai" for a model-generated plan or "fallback" for the basic
+    due-date/priority sort used when the AI is unavailable.
+    """
+
+    summary: str
+    items: list[PlanItem]
+    source: str

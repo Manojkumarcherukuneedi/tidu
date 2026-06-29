@@ -77,6 +77,18 @@ CREATE TABLE IF NOT EXISTS tasks (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 """
 
+# AI-generated subtasks belong to a task (Slice 7). Cascade-deleted with it.
+CREATE_SUBTASKS_TABLE = """
+CREATE TABLE IF NOT EXISTS subtasks (
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    task_id     INT NOT NULL,
+    text        VARCHAR(500) NOT NULL,
+    completed   BOOLEAN DEFAULT FALSE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+"""
+
 
 def _tasks_table_is_legacy(cur, db_name: str) -> bool:
     """True if a `tasks` table exists but predates the `user_id` column."""
@@ -122,9 +134,11 @@ def init_db() -> None:
             # 2. One-time migration: drop the pre-auth tasks table if present.
             if _tasks_table_is_legacy(cur, db_name):
                 cur.execute("DROP TABLE tasks;")
-            # 3. Create tables. Users first — tasks' foreign key references it.
+            # 3. Create tables. Users first — tasks' foreign key references it,
+            #    and subtasks reference tasks.
             cur.execute(CREATE_USERS_TABLE)
             cur.execute(CREATE_TASKS_TABLE)
+            cur.execute(CREATE_SUBTASKS_TABLE)
 
 
 def check_connection() -> bool:

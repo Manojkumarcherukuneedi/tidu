@@ -20,9 +20,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import ai_service, auth, crud, database
 from .models import (
+    BreakdownResponse,
+    DayPlan,
     HealthResponse,
     LoginRequest,
     SignupRequest,
+    Subtask,
+    SubtaskUpdate,
     Task,
     TaskCreate,
     TaskUpdate,
@@ -175,3 +179,54 @@ def delete_task(
     """Delete the current user's task. 204 on success, 404 if missing/not theirs."""
     crud.delete_task(task_id, current_user["id"])
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Slice 7: AI subtask breakdown --------------------------------------------
+@app.post("/tasks/{task_id}/breakdown", response_model=BreakdownResponse, tags=["subtasks"])
+def breakdown_task(task: dict = Depends(get_existing_task)) -> BreakdownResponse:
+    """Ask the LLM to break the (owned) task into subtasks and save them.
+
+    Never 500s: if the AI can't produce steps, `generated` is False and the
+    existing subtasks (if any) are left untouched.
+    """
+    texts = ai_service.generate_subtasks(task.get("title") or task.get("raw_text") or "")
+    if not texts:
+        return BreakdownResponse(subtasks=task.get("subtasks", []), generated=False)
+    saved = crud.replace_subtasks(task["id"], texts)
+    return BreakdownResponse(subtasks=saved, generated=True)
+
+
+@app.put("/subtasks/{subtask_id}", response_model=Subtask, tags=["subtasks"])
+def update_subtask(
+    subtask_id: int,
+    payload: SubtaskUpdate,
+    current_user: dict = Depends(auth.get_current_user),
+) -> dict:
+    """Toggle a subtask complete. 404 if it doesn't belong to the current user."""
+    updated = crud.update_subtask(subtask_id, current_user["id"], payload.completed)
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Subtask {subtask_id} not found")
+    return updated
+
+
+@app.delete("/subtasks/{subtask_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["subtasks"])
+def delete_subtask(
+    subtask_id: int,
+    current_user: dict = Depends(auth.get_current_user),
+) -> Response:
+    """Delete a subtask the user owns. 204 on success, 404 otherwise."""
+    if not crud.delete_subtask(subtask_id, current_user["id"]):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Subtask {subtask_id} not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Slice 7: Plan my day -----------------------------------------------------
+@app.post("/plan-my-day", response_model=DayPlan, tags=["tasks"])
+def plan_my_day(current_user: dict = Depends(auth.get_current_user)) -> DayPlan:
+    """Return a prioritized plan over the user's incomplete tasks.
+
+    Degrades to a basic due-date/priority sort (source="fallback") if the AI
+    is unavailable — never 500s.
+    """
+    tasks = crud.list_tasks(current_user["id"], completed=False)
+    return ai_service.plan_day(tasks)

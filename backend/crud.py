@@ -27,6 +27,9 @@ from .models import TaskCreate, TaskUpdate
 _TASK_COLUMNS = (
     "id, raw_text, title, category, priority, due_date, completed, created_at"
 )
+_SUBTASK_COLUMNS = "id, task_id, text, completed, created_at"
+# Same columns, qualified for queries that join subtasks to tasks (Slice 7).
+_SUBTASK_COLUMNS_S = "s.id, s.task_id, s.text, s.completed, s.created_at"
 
 
 # --- Users --------------------------------------------------------------------
@@ -97,7 +100,12 @@ def list_tasks(
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            return list(cur.fetchall())
+            tasks = list(cur.fetchall())
+    if tasks:  # attach subtasks in one extra query, grouped by task
+        grouped = get_subtasks_for_tasks([t["id"] for t in tasks])
+        for t in tasks:
+            t["subtasks"] = grouped.get(t["id"], [])
+    return tasks
 
 
 def get_task(task_id: int, user_id: int) -> Optional[dict]:
@@ -111,7 +119,11 @@ def get_task(task_id: int, user_id: int) -> Optional[dict]:
     with connection() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, (task_id, user_id))
-            return cur.fetchone()
+            task = cur.fetchone()
+    if task is None:
+        return None
+    task["subtasks"] = get_subtasks_for_task(task_id)
+    return task
 
 
 def update_task(task_id: int, user_id: int, data: TaskUpdate) -> Optional[dict]:
@@ -136,4 +148,79 @@ def delete_task(task_id: int, user_id: int) -> bool:
     with connection() as conn:
         with conn.cursor() as cur:
             affected = cur.execute(sql, (task_id, user_id))
+    return affected > 0
+
+
+# --- Subtasks (Slice 7) -------------------------------------------------------
+# Ownership is enforced by joining through `tasks` to the user_id — a subtask is
+# only reachable if its parent task belongs to the requesting user.
+def get_subtasks_for_task(task_id: int) -> list[dict]:
+    sql = f"SELECT {_SUBTASK_COLUMNS} FROM subtasks WHERE task_id = %s ORDER BY id"
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (task_id,))
+            return list(cur.fetchall())
+
+
+def get_subtasks_for_tasks(task_ids: list[int]) -> dict[int, list[dict]]:
+    """Fetch subtasks for many tasks in one query, grouped by task_id."""
+    if not task_ids:
+        return {}
+    placeholders = ", ".join(["%s"] * len(task_ids))  # count is ours, not user input
+    sql = f"SELECT {_SUBTASK_COLUMNS} FROM subtasks WHERE task_id IN ({placeholders}) ORDER BY id"
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, task_ids)
+            rows = cur.fetchall()
+    grouped: dict[int, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["task_id"], []).append(row)
+    return grouped
+
+
+def replace_subtasks(task_id: int, texts: list[str]) -> list[dict]:
+    """Replace a task's subtasks with a fresh set (re-running breakdown is idempotent)."""
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM subtasks WHERE task_id = %s", (task_id,))
+            for text in texts:
+                cur.execute(
+                    "INSERT INTO subtasks (task_id, text) VALUES (%s, %s)", (task_id, text)
+                )
+    return get_subtasks_for_task(task_id)
+
+
+def get_subtask(subtask_id: int, user_id: int) -> Optional[dict]:
+    """Return the subtask only if its parent task belongs to the user, else None."""
+    sql = (
+        f"SELECT {_SUBTASK_COLUMNS_S} FROM subtasks s "
+        "JOIN tasks t ON s.task_id = t.id WHERE s.id = %s AND t.user_id = %s"
+    )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (subtask_id, user_id))
+            return cur.fetchone()
+
+
+def update_subtask(subtask_id: int, user_id: int, completed: bool) -> Optional[dict]:
+    """Toggle a subtask's completed flag (scoped to the owner). None if not theirs."""
+    sql = (
+        "UPDATE subtasks s JOIN tasks t ON s.task_id = t.id "
+        "SET s.completed = %s WHERE s.id = %s AND t.user_id = %s"
+    )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (completed, subtask_id, user_id))
+    return get_subtask(subtask_id, user_id)
+
+
+def delete_subtask(subtask_id: int, user_id: int) -> bool:
+    """Delete a subtask the user owns. True if a row was deleted."""
+    sql = (
+        "DELETE s FROM subtasks s JOIN tasks t ON s.task_id = t.id "
+        "WHERE s.id = %s AND t.user_id = %s"
+    )
+    with connection() as conn:
+        with conn.cursor() as cur:
+            affected = cur.execute(sql, (subtask_id, user_id))
     return affected > 0

@@ -31,8 +31,14 @@ def _blocked_llm(*_args, **_kwargs):
 
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch):
-    """Applied to every test: no real LLM, no DB bootstrap, a test JWT secret."""
+    """Applied to every test: no real LLM, no DB bootstrap, a test JWT secret.
+
+    Both LLM entry points are blocked: `_call_llm` (enrichment) and `_complete`
+    (the shared boundary used by subtask breakdown + plan-my-day). So no test
+    can reach the real API regardless of which feature it exercises.
+    """
     monkeypatch.setattr(ai_service, "_call_llm", _blocked_llm)
+    monkeypatch.setattr(ai_service, "_complete", _blocked_llm)
     monkeypatch.setattr(database, "init_db", lambda: None)
     monkeypatch.setattr(auth, "JWT_SECRET", "test-secret-key-not-used-in-production")
 
@@ -47,8 +53,10 @@ class InMemoryStore:
     def __init__(self):
         self.users = {}
         self.tasks = {}
+        self.subtasks = {}
         self.next_user_id = 1
         self.next_task_id = 1
+        self.next_subtask_id = 1
 
     # --- users ---
     def create_user(self, email, password_hash):
@@ -95,11 +103,20 @@ class InMemoryStore:
             items = [t for t in items if t["category"] == category]
         if completed is not None:
             items = [t for t in items if bool(t["completed"]) == completed]
-        return [dict(t) for t in sorted(items, key=lambda t: t["id"], reverse=True)]
+        out = []
+        for t in sorted(items, key=lambda t: t["id"], reverse=True):
+            d = dict(t)
+            d["subtasks"] = self.get_subtasks_for_task(t["id"])
+            out.append(d)
+        return out
 
     def get_task(self, task_id, user_id):
         t = self.tasks.get(task_id)
-        return dict(t) if t and t["user_id"] == user_id else None
+        if not t or t["user_id"] != user_id:
+            return None
+        d = dict(t)
+        d["subtasks"] = self.get_subtasks_for_task(task_id)
+        return d
 
     def update_task(self, task_id, user_id, data: TaskUpdate):
         t = self.tasks.get(task_id)
@@ -115,6 +132,56 @@ class InMemoryStore:
         del self.tasks[task_id]
         return True
 
+    # --- subtasks (Slice 7) ---
+    def _owns_task(self, task_id, user_id):
+        t = self.tasks.get(task_id)
+        return bool(t) and t["user_id"] == user_id
+
+    def get_subtasks_for_task(self, task_id):
+        return [dict(s) for s in self.subtasks.values() if s["task_id"] == task_id]
+
+    def get_subtasks_for_tasks(self, task_ids):
+        grouped = {}
+        for s in self.subtasks.values():
+            if s["task_id"] in task_ids:
+                grouped.setdefault(s["task_id"], []).append(dict(s))
+        return grouped
+
+    def replace_subtasks(self, task_id, texts):
+        self.subtasks = {
+            sid: s for sid, s in self.subtasks.items() if s["task_id"] != task_id
+        }
+        for text in texts:
+            self.subtasks[self.next_subtask_id] = {
+                "id": self.next_subtask_id,
+                "task_id": task_id,
+                "text": text,
+                "completed": False,
+                "created_at": datetime(2026, 1, 1, 12, 0, 0),
+            }
+            self.next_subtask_id += 1
+        return self.get_subtasks_for_task(task_id)
+
+    def get_subtask(self, subtask_id, user_id):
+        s = self.subtasks.get(subtask_id)
+        if not s or not self._owns_task(s["task_id"], user_id):
+            return None
+        return dict(s)
+
+    def update_subtask(self, subtask_id, user_id, completed):
+        s = self.subtasks.get(subtask_id)
+        if not s or not self._owns_task(s["task_id"], user_id):
+            return None
+        s["completed"] = completed
+        return dict(s)
+
+    def delete_subtask(self, subtask_id, user_id):
+        s = self.subtasks.get(subtask_id)
+        if not s or not self._owns_task(s["task_id"], user_id):
+            return False
+        del self.subtasks[subtask_id]
+        return True
+
 
 @pytest.fixture
 def store(monkeypatch, _hermetic):
@@ -127,6 +194,13 @@ def store(monkeypatch, _hermetic):
     monkeypatch.setattr(crud, "get_task", s.get_task)
     monkeypatch.setattr(crud, "update_task", s.update_task)
     monkeypatch.setattr(crud, "delete_task", s.delete_task)
+    # subtasks (Slice 7)
+    monkeypatch.setattr(crud, "get_subtasks_for_task", s.get_subtasks_for_task)
+    monkeypatch.setattr(crud, "get_subtasks_for_tasks", s.get_subtasks_for_tasks)
+    monkeypatch.setattr(crud, "replace_subtasks", s.replace_subtasks)
+    monkeypatch.setattr(crud, "get_subtask", s.get_subtask)
+    monkeypatch.setattr(crud, "update_subtask", s.update_subtask)
+    monkeypatch.setattr(crud, "delete_subtask", s.delete_subtask)
     return s
 
 

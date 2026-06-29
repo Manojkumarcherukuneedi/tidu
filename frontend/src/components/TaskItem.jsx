@@ -11,13 +11,23 @@ const PRIORITIES = ["High", "Medium", "Low"];
  * the row actually unmounts. The persisted task is owned by App and arrives as
  * a prop; saves/toggles/deletes call back up via onUpdate / onDelete.
  */
-export default function TaskItem({ task, onUpdate, onDelete }) {
+export default function TaskItem({
+  task,
+  onUpdate,
+  onDelete,
+  onBreakdown,
+  onSubtaskToggle,
+  onSubtaskDelete,
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(toDraft(task));
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [breakingDown, setBreakingDown] = useState(false);
+  const [breakdownFailed, setBreakdownFailed] = useState(false);
 
   const overdue = isOverdue(task);
+  const subtasks = task.subtasks || [];
 
   function toggleComplete() {
     setBusy(true);
@@ -54,6 +64,19 @@ export default function TaskItem({ task, onUpdate, onDelete }) {
       await onDelete(task.id);
     } catch {
       setRemoving(false); // delete failed — bring the card back
+    }
+  }
+
+  async function handleBreakdown() {
+    setBreakingDown(true);
+    setBreakdownFailed(false);
+    try {
+      const res = await onBreakdown(task.id);
+      if (res && res.generated === false) setBreakdownFailed(true);
+    } catch {
+      setBreakdownFailed(true);
+    } finally {
+      setBreakingDown(false);
     }
   }
 
@@ -138,9 +161,48 @@ export default function TaskItem({ task, onUpdate, onDelete }) {
             </span>
           )}
         </div>
+
+        {breakingDown && <p className="subtask-status">✨ Breaking into steps…</p>}
+        {breakdownFailed && (
+          <p className="subtask-status error">
+            Couldn’t generate steps — try rephrasing the task.
+          </p>
+        )}
+        {subtasks.length > 0 && (
+          <ul className="subtask-list">
+            {subtasks.map((st) => (
+              <li key={st.id} className={`subtask ${st.completed ? "done" : ""}`}>
+                <button
+                  className={`subtask-check ${st.completed ? "checked" : ""}`}
+                  onClick={() => onSubtaskToggle(task.id, st)}
+                  aria-pressed={st.completed}
+                  aria-label="Toggle step"
+                >
+                  <span className="check-mark">✓</span>
+                </button>
+                <span className="subtask-text">{st.text}</span>
+                <button
+                  className="subtask-del"
+                  onClick={() => onSubtaskDelete(task.id, st.id)}
+                  aria-label="Delete step"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="task-actions">
+        <button
+          className="btn btn-icon"
+          onClick={handleBreakdown}
+          disabled={busy || breakingDown}
+          title="Break into steps with AI"
+        >
+          {breakingDown ? "…" : "✨ Steps"}
+        </button>
         <button className="btn btn-icon" onClick={startEditing} disabled={busy}>
           Edit
         </button>

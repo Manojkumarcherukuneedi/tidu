@@ -13,7 +13,16 @@ const EMPTY_BY_VIEW = {
  * plays a quick cross-fade (the `viewIn` animation) instead of a hard cut. The
  * grouping itself is computed by App and passed in as ready `sections`.
  */
-export default function TaskList({ sections, view, categoryFilter, onUpdate, onDelete }) {
+export default function TaskList({
+  sections,
+  view,
+  categoryFilter,
+  onUpdate,
+  onDelete,
+  onBreakdown,
+  onSubtaskToggle,
+  onSubtaskDelete,
+}) {
   const hasTasks = sections.some((s) => s.tasks.length > 0);
 
   let empty;
@@ -39,6 +48,9 @@ export default function TaskList({ sections, view, categoryFilter, onUpdate, onD
               section={section}
               onUpdate={onUpdate}
               onDelete={onDelete}
+              onBreakdown={onBreakdown}
+              onSubtaskToggle={onSubtaskToggle}
+              onSubtaskDelete={onSubtaskDelete}
             />
           ))}
         </div>
