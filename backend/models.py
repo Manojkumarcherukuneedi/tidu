@@ -140,11 +140,21 @@ class Task(BaseModel):
 
 
 class SubtaskUpdate(BaseModel):
-    """Request body for PUT /subtasks/{id} — toggle complete."""
+    """Request body for PUT /subtasks/{id} — partial: toggle complete and/or
+    edit the text."""
 
     model_config = ConfigDict(extra="forbid")
 
-    completed: bool
+    completed: Optional[bool] = None
+    text: Optional[str] = Field(default=None, min_length=1, max_length=500)
+
+
+class SubtaskCreate(BaseModel):
+    """Request body for POST /tasks/{id}/subtasks — add a step manually."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=500)
 
 
 # --- Slice 7 AI feature responses ---------------------------------------------

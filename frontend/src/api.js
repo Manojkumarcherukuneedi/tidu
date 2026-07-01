@@ -108,10 +108,18 @@ export function breakdownTask(id) {
   return request(`/tasks/${id}/breakdown`, { method: "POST" });
 }
 
-export function updateSubtask(id, completed) {
+export function updateSubtask(id, patch) {
+  // patch is { completed?, text? } — partial update
   return request(`/subtasks/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ completed }),
+    body: JSON.stringify(patch),
+  });
+}
+
+export function addSubtask(taskId, text) {
+  return request(`/tasks/${taskId}/subtasks`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
   });
 }
 

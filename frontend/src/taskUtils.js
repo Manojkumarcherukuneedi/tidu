@@ -16,6 +16,29 @@ export function isOverdue(task, today = todayStr()) {
   return Boolean(task.due_date) && !task.completed && task.due_date < today;
 }
 
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/**
+ * Format an ISO date (YYYY-MM-DD) for DISPLAY only — e.g. "July 3", or
+ * "July 3, 2027" when it's not the current year. We parse the string parts
+ * rather than `new Date(iso)` to avoid timezone off-by-one (an ISO date string
+ * is parsed as UTC midnight, which can shift the day in local time). Storage
+ * and API traffic stay ISO — this is purely presentational.
+ */
+export function formatDueDate(iso) {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso; // not an ISO date — show as-is
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const label = `${MONTHS[month - 1]} ${day}`;
+  return year === new Date().getFullYear() ? label : `${label}, ${year}`;
+}
+
 /** Which section a task belongs to. Completed always wins. */
 export function bucketOf(task, today = todayStr()) {
   if (task.completed) return "completed";

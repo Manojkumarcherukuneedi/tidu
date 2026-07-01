@@ -966,6 +966,49 @@ select:focus {
 .subtask-del:hover {
   color: var(--danger);
 }
+.subtask-text {
+  cursor: text; /* click to edit */
+}
+.subtask-input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 0.15rem 0.4rem;
+}
+.subtask-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.subtask.add-step:hover .subtask-del {
+  opacity: 0;
+}
+.add-step-form {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 1;
+}
+.add-step-plus {
+  flex-shrink: 0;
+  width: 17px;
+  text-align: center;
+  color: var(--text-faint);
+  font-weight: 700;
+}
+
+/* Steps button icon — single-color line icon tinted with the accent */
+.steps-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.steps-icon {
+  color: var(--accent);
+}
 
 /* ----- Modal (Plan my day) ------------------------------------------------- */
 .modal-overlay {

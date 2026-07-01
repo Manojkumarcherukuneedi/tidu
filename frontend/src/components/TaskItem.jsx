@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { isOverdue } from "../taskUtils.js";
+import { ClipboardList } from "lucide-react";
+import { formatDueDate, isOverdue } from "../taskUtils.js";
+import SubtaskRow from "./SubtaskRow.jsx";
 
 const PRIORITIES = ["High", "Medium", "Low"];
 
@@ -17,6 +19,8 @@ export default function TaskItem({
   onDelete,
   onBreakdown,
   onSubtaskToggle,
+  onSubtaskEdit,
+  onSubtaskAdd,
   onSubtaskDelete,
 }) {
   const [editing, setEditing] = useState(false);
@@ -25,9 +29,22 @@ export default function TaskItem({
   const [removing, setRemoving] = useState(false);
   const [breakingDown, setBreakingDown] = useState(false);
   const [breakdownFailed, setBreakdownFailed] = useState(false);
+  const [newStep, setNewStep] = useState("");
 
   const overdue = isOverdue(task);
   const subtasks = task.subtasks || [];
+
+  async function handleAddStep(e) {
+    e.preventDefault();
+    const text = newStep.trim();
+    if (!text) return;
+    try {
+      await onSubtaskAdd(task.id, text);
+      setNewStep("");
+    } catch {
+      /* Dashboard toasts the error; keep the text so the user can retry */
+    }
+  }
 
   function toggleComplete() {
     setBusy(true);
@@ -157,12 +174,12 @@ export default function TaskItem({
           {task.due_date && (
             <span className={`due ${overdue ? "due-overdue" : ""}`}>
               {overdue ? "⚠ Overdue · " : "📅 "}
-              {task.due_date}
+              {formatDueDate(task.due_date)}
             </span>
           )}
         </div>
 
-        {breakingDown && <p className="subtask-status">✨ Breaking into steps…</p>}
+        {breakingDown && <p className="subtask-status">Breaking into steps…</p>}
         {breakdownFailed && (
           <p className="subtask-status error">
             Couldn’t generate steps — try rephrasing the task.
@@ -171,37 +188,46 @@ export default function TaskItem({
         {subtasks.length > 0 && (
           <ul className="subtask-list">
             {subtasks.map((st) => (
-              <li key={st.id} className={`subtask ${st.completed ? "done" : ""}`}>
-                <button
-                  className={`subtask-check ${st.completed ? "checked" : ""}`}
-                  onClick={() => onSubtaskToggle(task.id, st)}
-                  aria-pressed={st.completed}
-                  aria-label="Toggle step"
-                >
-                  <span className="check-mark">✓</span>
-                </button>
-                <span className="subtask-text">{st.text}</span>
-                <button
-                  className="subtask-del"
-                  onClick={() => onSubtaskDelete(task.id, st.id)}
-                  aria-label="Delete step"
-                >
-                  ×
-                </button>
-              </li>
+              <SubtaskRow
+                key={st.id}
+                subtask={st}
+                onToggle={(s) => onSubtaskToggle(task.id, s)}
+                onEdit={(id, text) => onSubtaskEdit(task.id, id, text)}
+                onDelete={(id) => onSubtaskDelete(task.id, id)}
+              />
             ))}
+            <li className="subtask add-step">
+              <form className="add-step-form" onSubmit={handleAddStep}>
+                <span className="add-step-plus" aria-hidden="true">+</span>
+                <input
+                  className="subtask-input"
+                  value={newStep}
+                  maxLength={500}
+                  placeholder="add step"
+                  onChange={(e) => setNewStep(e.target.value)}
+                  aria-label="Add a step"
+                />
+              </form>
+            </li>
           </ul>
         )}
       </div>
 
       <div className="task-actions">
         <button
-          className="btn btn-icon"
+          className="btn btn-icon steps-btn"
           onClick={handleBreakdown}
           disabled={busy || breakingDown}
           title="Break into steps with AI"
         >
-          {breakingDown ? "…" : "✨ Steps"}
+          {breakingDown ? (
+            "…"
+          ) : (
+            <>
+              <ClipboardList className="steps-icon" size={15} aria-hidden="true" />
+              Steps
+            </>
+          )}
         </button>
         <button className="btn btn-icon" onClick={startEditing} disabled={busy}>
           Edit

@@ -21,6 +21,8 @@ export default function TaskList({
   onDelete,
   onBreakdown,
   onSubtaskToggle,
+  onSubtaskEdit,
+  onSubtaskAdd,
   onSubtaskDelete,
 }) {
   const hasTasks = sections.some((s) => s.tasks.length > 0);
@@ -50,6 +52,8 @@ export default function TaskList({
               onDelete={onDelete}
               onBreakdown={onBreakdown}
               onSubtaskToggle={onSubtaskToggle}
+              onSubtaskEdit={onSubtaskEdit}
+              onSubtaskAdd={onSubtaskAdd}
               onSubtaskDelete={onSubtaskDelete}
             />
           ))}

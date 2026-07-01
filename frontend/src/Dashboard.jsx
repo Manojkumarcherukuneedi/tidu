@@ -135,18 +135,43 @@ export default function Dashboard({ email, onLogout }) {
     }
   }
 
+  function replaceSubtask(taskId, updated) {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, subtasks: t.subtasks.map((s) => (s.id === updated.id ? updated : s)) }
+          : t
+      )
+    );
+  }
+
   async function handleSubtaskToggle(taskId, subtask) {
     try {
-      const updated = await api.updateSubtask(subtask.id, !subtask.completed);
+      replaceSubtask(taskId, await api.updateSubtask(subtask.id, { completed: !subtask.completed }));
+    } catch (err) {
+      addToast("error", err.message);
+    }
+  }
+
+  async function handleSubtaskEdit(taskId, subtaskId, text) {
+    try {
+      replaceSubtask(taskId, await api.updateSubtask(subtaskId, { text }));
+    } catch (err) {
+      addToast("error", err.message);
+    }
+  }
+
+  async function handleSubtaskAdd(taskId, text) {
+    try {
+      const created = await api.addSubtask(taskId, text);
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === taskId
-            ? { ...t, subtasks: t.subtasks.map((s) => (s.id === subtask.id ? updated : s)) }
-            : t
+          t.id === taskId ? { ...t, subtasks: [...t.subtasks, created] } : t
         )
       );
     } catch (err) {
       addToast("error", err.message);
+      throw err;
     }
   }
 
@@ -261,6 +286,8 @@ export default function Dashboard({ email, onLogout }) {
                 onDelete={handleDelete}
                 onBreakdown={handleBreakdown}
                 onSubtaskToggle={handleSubtaskToggle}
+                onSubtaskEdit={handleSubtaskEdit}
+                onSubtaskAdd={handleSubtaskAdd}
                 onSubtaskDelete={handleSubtaskDelete}
               />
             )}

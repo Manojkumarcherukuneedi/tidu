@@ -26,6 +26,7 @@ from .models import (
     LoginRequest,
     SignupRequest,
     Subtask,
+    SubtaskCreate,
     SubtaskUpdate,
     Task,
     TaskCreate,
@@ -196,14 +197,25 @@ def breakdown_task(task: dict = Depends(get_existing_task)) -> BreakdownResponse
     return BreakdownResponse(subtasks=saved, generated=True)
 
 
+@app.post(
+    "/tasks/{task_id}/subtasks",
+    response_model=Subtask,
+    status_code=status.HTTP_201_CREATED,
+    tags=["subtasks"],
+)
+def add_subtask(payload: SubtaskCreate, task: dict = Depends(get_existing_task)) -> dict:
+    """Manually add a subtask to a task the current user owns (404 otherwise)."""
+    return crud.add_subtask(task["id"], payload.text.strip())
+
+
 @app.put("/subtasks/{subtask_id}", response_model=Subtask, tags=["subtasks"])
 def update_subtask(
     subtask_id: int,
     payload: SubtaskUpdate,
     current_user: dict = Depends(auth.get_current_user),
 ) -> dict:
-    """Toggle a subtask complete. 404 if it doesn't belong to the current user."""
-    updated = crud.update_subtask(subtask_id, current_user["id"], payload.completed)
+    """Edit a subtask (toggle complete and/or change text). 404 if not the owner's."""
+    updated = crud.update_subtask(subtask_id, current_user["id"], payload)
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Subtask {subtask_id} not found")
     return updated

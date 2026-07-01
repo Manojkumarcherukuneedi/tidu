@@ -71,6 +71,44 @@ def test_subtask_toggle_delete_and_scope(client, anon_client, make_user, monkeyp
     assert len(client.get(f"/tasks/{task['id']}").json()["subtasks"]) == 1
 
 
+def test_subtask_edit_text(client, monkeypatch):
+    monkeypatch.setattr(ai_service, "_complete", lambda *a, **k: '{"subtasks": ["Original step"]}')
+    task = client.post("/tasks", json=FULL).json()
+    sid = client.post(f"/tasks/{task['id']}/breakdown").json()["subtasks"][0]["id"]
+    # partial update: change only the text, completed untouched
+    r = client.put(f"/subtasks/{sid}", json={"text": "Edited step text"})
+    assert r.status_code == 200
+    assert r.json()["text"] == "Edited step text"
+    assert r.json()["completed"] is False
+
+
+def test_subtask_add_manual(client):
+    task = client.post("/tasks", json=FULL).json()
+    r = client.post(f"/tasks/{task['id']}/subtasks", json={"text": "A manual step"})
+    assert r.status_code == 201, r.text
+    assert r.json()["text"] == "A manual step"
+    assert r.json()["completed"] is False
+    # it shows up on the task
+    assert "A manual step" in [s["text"] for s in client.get(f"/tasks/{task['id']}").json()["subtasks"]]
+
+
+def test_subtask_add_empty_rejected(client):
+    task = client.post("/tasks", json=FULL).json()
+    assert client.post(f"/tasks/{task['id']}/subtasks", json={"text": ""}).status_code == 422
+
+
+def test_subtask_add_to_other_users_task_404(client, anon_client, make_user):
+    task = client.post("/tasks", json=FULL).json()
+    _, token_b = make_user("b-add@example.com")
+    r = anon_client.post(
+        f"/tasks/{task['id']}/subtasks",
+        json={"text": "sneaky"},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert r.status_code == 404
+
+
 def test_subtask_routes_require_auth(anon_client):
     assert anon_client.put("/subtasks/1", json={"completed": True}).status_code == 401
     assert anon_client.delete("/subtasks/1").status_code == 401
+    assert anon_client.post("/tasks/1/subtasks", json={"text": "x"}).status_code == 401

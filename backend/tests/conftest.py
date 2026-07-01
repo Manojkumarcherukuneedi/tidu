@@ -162,17 +162,29 @@ class InMemoryStore:
             self.next_subtask_id += 1
         return self.get_subtasks_for_task(task_id)
 
+    def add_subtask(self, task_id, text):
+        row = {
+            "id": self.next_subtask_id,
+            "task_id": task_id,
+            "text": text,
+            "completed": False,
+            "created_at": datetime(2026, 1, 1, 12, 0, 0),
+        }
+        self.subtasks[self.next_subtask_id] = row
+        self.next_subtask_id += 1
+        return dict(row)
+
     def get_subtask(self, subtask_id, user_id):
         s = self.subtasks.get(subtask_id)
         if not s or not self._owns_task(s["task_id"], user_id):
             return None
         return dict(s)
 
-    def update_subtask(self, subtask_id, user_id, completed):
+    def update_subtask(self, subtask_id, user_id, data):
         s = self.subtasks.get(subtask_id)
         if not s or not self._owns_task(s["task_id"], user_id):
             return None
-        s["completed"] = completed
+        s.update(data.model_dump(exclude_unset=True))
         return dict(s)
 
     def delete_subtask(self, subtask_id, user_id):
@@ -198,6 +210,7 @@ def store(monkeypatch, _hermetic):
     monkeypatch.setattr(crud, "get_subtasks_for_task", s.get_subtasks_for_task)
     monkeypatch.setattr(crud, "get_subtasks_for_tasks", s.get_subtasks_for_tasks)
     monkeypatch.setattr(crud, "replace_subtasks", s.replace_subtasks)
+    monkeypatch.setattr(crud, "add_subtask", s.add_subtask)
     monkeypatch.setattr(crud, "get_subtask", s.get_subtask)
     monkeypatch.setattr(crud, "update_subtask", s.update_subtask)
     monkeypatch.setattr(crud, "delete_subtask", s.delete_subtask)

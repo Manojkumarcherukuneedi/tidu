@@ -11,6 +11,8 @@ export default function TaskSection({
   onDelete,
   onBreakdown,
   onSubtaskToggle,
+  onSubtaskEdit,
+  onSubtaskAdd,
   onSubtaskDelete,
 }) {
   return (
@@ -31,6 +33,8 @@ export default function TaskSection({
             onDelete={onDelete}
             onBreakdown={onBreakdown}
             onSubtaskToggle={onSubtaskToggle}
+            onSubtaskEdit={onSubtaskEdit}
+            onSubtaskAdd={onSubtaskAdd}
             onSubtaskDelete={onSubtaskDelete}
           />
         ))}

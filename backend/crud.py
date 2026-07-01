@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import Optional
 
 from .database import connection
-from .models import TaskCreate, TaskUpdate
+from .models import SubtaskUpdate, TaskCreate, TaskUpdate
 
 # Columns read back for every task. Listed explicitly (not SELECT *) so the
 # response shape is stable. user_id is intentionally omitted from responses.
@@ -202,15 +202,36 @@ def get_subtask(subtask_id: int, user_id: int) -> Optional[dict]:
             return cur.fetchone()
 
 
-def update_subtask(subtask_id: int, user_id: int, completed: bool) -> Optional[dict]:
-    """Toggle a subtask's completed flag (scoped to the owner). None if not theirs."""
+def add_subtask(task_id: int, text: str) -> dict:
+    """Insert one subtask under a task (ownership checked by the caller) and return it."""
+    with connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO subtasks (task_id, text) VALUES (%s, %s)", (task_id, text)
+            )
+            new_id = cur.lastrowid
+            cur.execute(f"SELECT {_SUBTASK_COLUMNS} FROM subtasks WHERE id = %s", (new_id,))
+            return cur.fetchone()
+
+
+def update_subtask(subtask_id: int, user_id: int, data: SubtaskUpdate) -> Optional[dict]:
+    """Partially update a subtask (completed and/or text), scoped to the owner.
+
+    Only the fields the client actually sent are changed (exclude_unset). Column
+    names come from the schema (trusted); values stay parameterized.
+    """
+    fields = data.model_dump(exclude_unset=True)
+    if not fields:
+        return get_subtask(subtask_id, user_id)
+    set_clause = ", ".join(f"s.{col} = %s" for col in fields)
+    params = list(fields.values()) + [subtask_id, user_id]
     sql = (
-        "UPDATE subtasks s JOIN tasks t ON s.task_id = t.id "
-        "SET s.completed = %s WHERE s.id = %s AND t.user_id = %s"
+        f"UPDATE subtasks s JOIN tasks t ON s.task_id = t.id "
+        f"SET {set_clause} WHERE s.id = %s AND t.user_id = %s"
     )
     with connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (completed, subtask_id, user_id))
+            cur.execute(sql, params)
     return get_subtask(subtask_id, user_id)
 
 
